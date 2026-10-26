@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32 Relay IoT</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #eef2f7;
+      text-align: center;
+      padding: 30px 15px;
+    }
+    .card {
+      background: white;
+      max-width: 380px;
+      margin: 30px auto;
+      padding: 25px;
+      border-radius: 16px;
+      box-shadow: 0 4px 18px #0001;
+    }
+    button {
+      width: 110px;
+      padding: 15px;
+      margin: 8px;
+      border: 0;
+      border-radius: 10px;
+      color: white;
+      font-size: 17px;
+      cursor: pointer;
+    }
+    #on { background: #16a34a; }
+    #off { background: #dc2626; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    #status { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>ESP32 Relay IoT</h2>
+  <div class="card">
+    <h3>Kontrol Relay 1</h3>
+    <p>Koneksi: <span id="connection">Menghubungkan...</span></p>
+    <p>Status relay: <span id="status">Belum diketahui</span></p>
+    <button id="on" disabled>ON</button>
+    <button id="off" disabled>OFF</button>
+    <p id="message">Menunggu koneksi MQTT...</p>
+  </div>
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script>
+    // Gunakan topic yang sama dengan program ESP32.
+    const topicControl = "esp32relay/7f3a9c2e/control";
+    const topicStatus  = "esp32relay/7f3a9c2e/status";
+
+    const connection = document.getElementById("connection");
+    const status = document.getElementById("status");
+    const message = document.getElementById("message");
+    const onButton = document.getElementById("on");
+    const offButton = document.getElementById("off");
+
+    const client = mqtt.connect(
+      "wss://broker.hivemq.com:8884/mqtt",
+      {
+        clientId: "web_" + Math.random().toString(16).slice(2, 12),
+        clean: true,
+        connectTimeout: 10000,
+        reconnectPeriod: 3000
+      }
+    );
+
+    client.on("connect", () => {
+      connection.textContent = "Terhubung";
+      message.textContent = "Siap mengirim perintah.";
+      onButton.disabled = false;
+      offButton.disabled = false;
+
+      client.subscribe(topicStatus, (err) => {
+        if (err) message.textContent = "Gagal berlangganan status.";
+      });
+    });
+
+    client.on("reconnect", () => {
+      connection.textContent = "Menghubungkan ulang...";
+      onButton.disabled = true;
+      offButton.disabled = true;
+    });
+
+    client.on("error", () => {
+      connection.textContent = "Koneksi bermasalah";
+    });
+
+    client.on("offline", () => {
+      connection.textContent = "Offline";
+      onButton.disabled = true;
+      offButton.disabled = true;
+    });
+
+    client.on("message", (topic, payload) => {
+      if (topic === topicStatus) {
+        const value = payload.toString();
+        status.textContent =
+          value === "ON" ? "ON" :
+          value === "OFF" ? "OFF" : value;
+      }
+    });
+
+    function sendCommand(value) {
+      if (!client.connected) {
+        message.textContent = "Belum terhubung ke MQTT.";
+        return;
+      }
+
+      client.publish(topicControl, value, { qos: 0 }, (err) => {
+        message.textContent = err
+          ? "Perintah gagal dikirim."
+          : "Perintah " + value + " dikirim; menunggu status ESP32.";
+      });
+    }
+
+    onButton.addEventListener("click", () => sendCommand("ON"));
+    offButton.addEventListener("click", () => sendCommand("OFF"));
+  </script>
+</body>
+</html>
